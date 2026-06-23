@@ -1,0 +1,26 @@
+# --- Snapcraft ---
+# Build artifacts produced by `snapcraft`
+*.snap
+parts/
+prime/
+stage/
+*.comp
+
+# Snapcraft local state / logs
+.snapcraft/
+snap/.snapcraft/
+
+# --- .NET (in case sources are built locally) ---
+bin/
+obj/
+*.user
+*.suo
+[Dd]ebug/
+[Rr]elease/
+
+# --- Editors / OS ---
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
