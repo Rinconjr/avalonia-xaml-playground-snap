@@ -16,8 +16,7 @@ any Linux distribution that supports `snapd`.
 ## About the upstream project
 
 [XamlPlayground](https://github.com/AvaloniaUI/XamlPlayground) is an interactive
-playground for [Avalonia](https://avaloniaui.net/) XAML. It lets you write XAML
-(and optional C# code-behind) and see the rendered result live. The upstream
+playground for [Avalonia](https://avaloniaui.net/) XAML. It lets you write XAML and see the rendered result live. The upstream
 project is written in C# and is licensed under the
 [MIT license](https://github.com/AvaloniaUI/XamlPlayground/blob/main/LICENSE.md).
 
@@ -31,7 +30,7 @@ This repo is primarily a **teaching/learning sandbox**. The objectives are to:
 - Discover missing runtime libraries methodically (`apt-file`, `ldd`).
 - Move from `devmode` to `strict` confinement.
 - Add desktop integration (`.desktop` entry + icon).
-- Practice the full build → install → run → iterate workflow with `snapcraft`.
+- Practice the full build -> install -> run -> iterate workflow with `snapcraft`.
 
 ## Prerequisites
 
@@ -75,7 +74,7 @@ Before you start, make sure you have the following installed:
 From the root of this repository, run:
 
 ```sh
-snapcraft
+snapcraft pack
 ```
 
 This produces a `.snap` file in the current directory, for example:
@@ -85,7 +84,7 @@ rinconjr-avalonia-xaml-playground_0.1_amd64.snap
 ```
 
 > **Tip**
-> Use `snapcraft --verbose` for detailed build output, and
+> Use `snapcraft pack --verbose` for detailed build output, and
 > `snapcraft clean` to start from a clean build environment if something goes wrong.
 
 ## Installing the snap
@@ -123,19 +122,36 @@ Or find **Avalonia XAML Playground** in your desktop application menu (the
 
 ## How the build works
 
-Because `core26` does not ship the .NET SDK (and the Canonical `dotnet-sdk` snap
-only goes up to .NET 8 and is a `classic` snap), the recipe downloads the
-official **.NET 10 SDK** from Microsoft during the build and runs
-`dotnet publish` as a **self-contained** app, so the .NET runtime is bundled
-inside the snap and the user does not need .NET installed.
+The recipe uses the **.NET plugin (v2)** (`plugin: dotnet`), which runs
+`dotnet restore` -> `dotnet build` -> `dotnet publish` automatically. Setting
+`dotnet-version: "10.0"` makes the plugin fetch the official Canonical **.NET 10
+SDK content snap** (`dotnet-sdk-100`) during the build, so there is no need to
+download the SDK manually (this was my first approach before I found out about the plugin).
 
-The publish step maps the snap's target architecture to a .NET Runtime
-Identifier (RID), so the same recipe works for both `amd64` and `arm64`:
+The relevant part keys are:
 
-| `platforms` arch | `$CRAFT_ARCH_BUILD_FOR` | .NET RID     |
-| ---------------- | ----------------------- | ------------ |
-| `amd64`          | `amd64`                 | `linux-x64`  |
-| `arm64`          | `arm64`                 | `linux-arm64`|
+| Key | Value | Purpose |
+| --- | --- | --- |
+| `plugin` | `dotnet` | Use the .NET plugin (v2) |
+| `dotnet-version` | `"10.0"` | Provision the .NET 10 SDK content snap |
+| `dotnet-project` | `src/.../XamlPlayground.NetCore.csproj` | Which project to build |
+| `dotnet-self-contained` | `true` | Bundle the runtime; auto-selects the RID |
+
+With `dotnet-self-contained: true`, the plugin picks the .NET Runtime Identifier
+(RID) automatically from `$CRAFT_BUILD_FOR`, so the same recipe works for both
+`amd64` and `arm64`:
+
+| `$CRAFT_BUILD_FOR` | .NET RID      |
+| ------------------ | ------------- |
+| `amd64`            | `linux-x64`   |
+| `arm64`            | `linux-arm64` |
+
+> Docs: [.NET plugin (v2)](https://documentation.ubuntu.com/snapcraft/9.0/common/craft-parts/reference/plugins/dotnet_v2_plugin/).
+
+> **Earlier approach (manual):** before switching to the plugin, this recipe used
+> `plugin: nil` with an `override-build` that ran `dotnet-install.sh` and
+> `dotnet publish` by hand, mapping the architecture to a RID with a `case`
+> statement. The plugin replaces all of that boilerplate.
 
 ## Confinement and status
 
@@ -191,10 +207,10 @@ binaries and libraries at once instead of checking one file by name:
 # Open a shell inside the confined snap environment
 snap run --shell rinconjr-avalonia-xaml-playground
 
-# $SNAP points to the snap's root. For this snap, `dotnet publish` puts the
-# executable and all native .so files under $SNAP/bin, so scan that whole folder
-# and list every missing library across all of them, de-duplicated:
-find "$SNAP/bin" -type f \( -name "*.so*" -o -perm -u+x \) -exec ldd {} \; 2>/dev/null \
+# $SNAP points to the snap's root. The dotnet plugin publishes the executable
+# and all native .so files into the snap root, so scan the whole snap and list
+# every missing library across all binaries, de-duplicated:
+find "$SNAP" -type f \( -name "*.so*" -o -perm -u+x \) -exec ldd {} \; 2>/dev/null \
   | grep "not found" | sort -u
 # e.g. ->  libfontconfig.so.1 => not found
 #          libX11.so.6 => not found
@@ -209,24 +225,26 @@ Each line reported as `not found` is a library you still need to add to
 apt-file search <lib>
 ```
 
-> **Where do the files live?** It depends on the build. This snap installs into
-> `$SNAP/bin` because the recipe runs `dotnet publish --output "$CRAFT_PART_INSTALL/bin"`
-> (`$CRAFT_PART_INSTALL` becomes the snap root). Other plugins/recipes may place
-> binaries under `$SNAP/usr/bin`, `$SNAP/usr/lib`, etc. If unsure, scan the whole
-> snap: replace `"$SNAP/bin"` with `"$SNAP"` in the command above.
+> **Where do the files live?** It depends on the build. With the `dotnet` plugin
+> (used here), `dotnet publish` places the executable and the native `.so` files
+> directly in the **snap root** (`$SNAP/`). Other plugins/recipes may place
+> binaries under `$SNAP/usr/bin`, `$SNAP/usr/lib`, etc. The command above scans
+> the whole snap (`"$SNAP"`), so it works regardless of layout.
 
 Following this loop, the libraries discovered for this app were:
 
 | Missing `.so`        | Package          | Used by              |
 | -------------------- | ---------------- | -------------------- |
 | `libicu*.so`         | `libicu78`       | .NET globalization   |
+| `libz.so.1`          | `zlib1g`         | SkiaSharp (compression) |
 | `libfontconfig.so.1` | `libfontconfig1` | SkiaSharp (renderer) |
 | `libX11.so.6`        | `libx11-6`       | Avalonia X11 backend |
 | `libICE.so.6`        | `libice6`        | Avalonia X11 ICELib  |
 | `libSM.so.6`         | `libsm6`         | Avalonia X11 SMlib   |
 
-> Note: `libicu78` is also added to `build-packages`, because the `dotnet` CLI
-> itself needs ICU to run during the build.
+> Note: these go in `stage-packages` only. The build-time .NET SDK (including its
+> own ICU dependency) is provided by the `dotnet` plugin via the
+> `dotnet-sdk-100` content snap, so there is no `build-packages` section.
 
 ## Useful commands
 
@@ -259,6 +277,8 @@ lxc --project snapcraft delete -f <instance-name>
 ## Resources
 
 - [Snapcraft documentation](https://snapcraft.io/docs)
+- [.NET plugin (v2)](https://documentation.ubuntu.com/snapcraft/9.0/common/craft-parts/reference/plugins/dotnet_v2_plugin/)
+- [GNOME extension (supported bases)](https://documentation.ubuntu.com/snapcraft/stable/reference/extensions/gnome-extension/)
 - [Crafting a .NET snap](https://snapcraft.io/docs/dotnet-apps)
 - [Avalonia UI](https://avaloniaui.net/)
 - [AvaloniaUI/XamlPlayground](https://github.com/AvaloniaUI/XamlPlayground)
