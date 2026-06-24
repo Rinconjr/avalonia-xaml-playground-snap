@@ -7,8 +7,13 @@ description: |
 
   This snap is not endorsed by the Avalonia project or its maintainers. It is a personal project of the snap author to learn how to create snaps and to experiment with Avalonia.
 
+# Equivalent to
+# platforms:
+#  - build-on: [amd64]
+#  - build-for: [amd64]
 platforms:
   amd64:
+  arm64:
 
 grade: devel # must be 'stable' to release into candidate/stable channels TODO: Change when finished.
 confinement: devmode # use 'strict' once you have the right plugs and slots TODO: Change when finished.
@@ -18,8 +23,6 @@ apps:
     # The published self-contained executable. Its name matches the .csproj
     # assembly name (XamlPlayground.NetCore).
     command: bin/XamlPlayground.NetCore
-    # Desktop interfaces configured manually (instead of the 'gnome' extension,
-    # which does not yet support core26).
     plugs:
       - desktop
       - desktop-legacy
@@ -36,30 +39,47 @@ parts:
     source: https://github.com/AvaloniaUI/XamlPlayground.git
     source-type: git
 
+    # Build and stage dependencies for .NET Core and the application.
     build-packages:
       - curl
       - ca-certificates
+      - libicu78
 
+    # IMPORTANT: Stage dependencies for the application to run.
+    # Need to add what the runtime actually reports as missing:
+    #   1. run the app  ->  read the first "cannot open libXXX.so" error
+    #     1.a snapcraft pack
+    #     1.b sudo snap install ./name.snap --devmode --dangerous
+    #     1.c snap run name
+    #   2. apt-file search libXXX.so  ->  find the package that provides it
+    #   3. add it here, rebuild, run again, repeat
     stage-packages:
-      - libicu76
+      - libicu78
       - zlib1g
+      - libfontconfig1
+      - libx11-6
+      - libice6
+      - libsm6
 
     override-build: |
-      # Install the .NET 10 SDK locally inside the build environment.
+      case "$CRAFT_ARCH_BUILD_FOR" in
+        amd64) DOTNET_RID="linux-x64" ;;
+        arm64) DOTNET_RID="linux-arm64" ;;
+        armhf) DOTNET_RID="linux-arm" ;;
+        *) echo "Unsupported architecture: $CRAFT_ARCH_BUILD_FOR" >&2; exit 1 ;;
+      esac
+
       export DOTNET_ROOT="$CRAFT_PART_BUILD/.dotnet"
       curl -sSL https://dot.net/v1/dotnet-install.sh -o /tmp/dotnet-install.sh
       chmod +x /tmp/dotnet-install.sh
       /tmp/dotnet-install.sh --channel 10.0 --install-dir "$DOTNET_ROOT"
       export PATH="$DOTNET_ROOT:$PATH"
 
-      # Publish the desktop ("head") project as a self-contained app so the
-      # .NET runtime is bundled inside the snap (the user needs no .NET).
       dotnet publish src/XamlPlayground.NetCore/XamlPlayground.NetCore.csproj \
         --configuration Release \
-        --runtime linux-x64 \
+        --runtime "$DOTNET_RID" \
         --self-contained true \
         -p:PublishSingleFile=false \
         --output "$CRAFT_PART_INSTALL/bin"
 
-      # Make sure the launcher is executable.
       chmod +x "$CRAFT_PART_INSTALL/bin/XamlPlayground.NetCore"
