@@ -16,7 +16,7 @@ platforms:
   arm64:
 
 grade: devel # must be 'stable' to release into candidate/stable channels TODO: Change when finished.
-confinement: devmode # use 'strict' once you have the right plugs and slots TODO: Change when finished.
+confinement: strict # enforced confinement: the app can only do what its plugs allow
 
 apps:
   rinconjr-avalonia-xaml-playground:

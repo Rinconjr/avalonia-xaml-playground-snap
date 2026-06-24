@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Avalonia XAML Playground
+Comment=A simple Avalonia XAML playground
+Exec=rinconjr-avalonia-xaml-playground
+Icon=${SNAP}/meta/gui/icon.png
+Terminal=false
+Categories=Development;IDE;
+Keywords=avalonia;xaml;dotnet;playground;
