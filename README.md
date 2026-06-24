@@ -25,11 +25,12 @@ project is written in C# and is licensed under the
 This repo is primarily a **teaching/learning sandbox**. The objectives are to:
 
 - Learn the structure of a `snapcraft.yaml` file (`parts`, `apps`, `plugs`).
-- Build a .NET / Avalonia application inside a snap with `dotnet publish`.
-- Understand `build-packages` vs `stage-packages`.
+- Build a .NET / Avalonia application inside a snap with the `dotnet` plugin.
+- Understand the difference between plugins, extensions, and `stage-packages`.
 - Discover missing runtime libraries methodically (`apt-file`, `ldd`).
 - Move from `devmode` to `strict` confinement.
 - Add desktop integration (`.desktop` entry + icon).
+- Handle benign library-linter warnings with `lint: ignore`.
 - Practice the full build -> install -> run -> iterate workflow with `snapcraft`.
 
 ## Prerequisites
@@ -96,8 +97,9 @@ The snap now uses `confinement: strict`, so install it with just the
 sudo snap install ./rinconjr-avalonia-xaml-playground_0.1_amd64.snap --dangerous
 ```
 
-> While developing, you may have used `--devmode` to disable confinement.
-> Once you move to `strict`, drop `--devmode` so the real interface rules apply.
+> During early development you can temporarily use `--devmode` to disable
+> confinement while debugging. With `confinement: strict`, install without it so
+> the real interface rules apply.
 
 After installing, you can review which interfaces are connected:
 
@@ -165,8 +167,8 @@ With `dotnet-self-contained: true`, the plugin picks the .NET Runtime Identifier
   - `home`
 
 > **Why declare these plugs manually instead of using the `gnome` extension?**
-> The `gnome` extension would normally wire up the desktop interfaces (including
-> `desktop` and `desktop-legacy`), fonts and themes automatically. However, per
+> The `gnome` extension would normally wire up the desktop interfaces and add a
+> common GNOME platform (fonts, themes, environment) automatically. However, per
 > the official docs the extension is *"compatible with the **core22 and core24**
 > bases"* only, it does **not** support `core26`. Trying to use it on `core26`
 > fails with:
@@ -176,7 +178,9 @@ With `dotnet-self-contained: true`, the plugin picks the .NET Runtime Identifier
 > ```
 >
 > So on `core26` the `desktop`, `desktop-legacy`, `wayland`, `x11` and `opengl`
-> plugs are declared by hand instead.
+> plugs are declared by hand instead. Note this only re-creates the *interface
+> access* the extension provided — the GNOME platform (fonts/themes) is not
+> bundled, so on a minimal host the app may fall back to default fonts.
 > Source: [GNOME extension - Snapcraft docs](https://documentation.ubuntu.com/snapcraft/stable/reference/extensions/gnome-extension/).
 
 ## Finding the runtime library dependencies
