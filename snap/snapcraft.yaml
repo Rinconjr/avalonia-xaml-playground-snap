@@ -1,30 +1,41 @@
-name: rinconjr-avalonia-xaml-playground # TODO: you probably want to 'snapcraft register <name>'
-base: core26 # the base snap is the execution environment for this snap
-version: '0.1' # just for humans, typically '1.2+git' or '1.3.2'
-icon: snap/gui/icon.png # 256x256 PNG icon for the snap
-summary: A simple Avalonia XAML playground snap # 79 char long summary
+name: rinconjr-avalonia-xaml-playground
+# TODO: register the name with `snapcraft register <name>` before publishing.
+
+title: Avalonia XAML Playground
+base: core26
+adopt-info: xaml-playground
+
+summary: Interactive Avalonia XAML playground
+# Keep the summary at or under 79 characters for optimal display.
+
 description: |
-  Avalonia XAML playground snap.
+  Avalonia XAML Playground is an interactive environment for experimenting with
+  Avalonia XAML and seeing the rendered result live.
 
-  This snap is not endorsed by the Avalonia project or its maintainers. It is a personal project of the snap author to learn how to create snaps and to experiment with Avalonia.
+  This snap is a personal learning project and is not endorsed by the Avalonia
+  project or its maintainers.
 
-# Equivalent to
-# platforms:
-#  - build-on: [amd64]
-#  - build-for: [amd64]
+license: MIT
+source-code: https://github.com/AvaloniaUI/XamlPlayground
+issues: https://github.com/AvaloniaUI/XamlPlayground/issues
+
 platforms:
   amd64:
   arm64:
 
-grade: devel # must be 'stable' to release into candidate/stable channels TODO: Change when finished.
-confinement: strict # enforced confinement: the app can only do what its plugs allow
+grade: devel
+# TODO: change to `stable` when ready for release to candidate/stable channels.
+confinement: strict
 
 apps:
   rinconjr-avalonia-xaml-playground:
-    # The published self-contained executable. Its name matches the .csproj
-    # assembly name (XamlPlayground.NetCore). The dotnet plugin publishes the
-    # assets to the snap root.
     command: XamlPlayground.NetCore
+    common-id: rinconjr-avalonia-xaml-playground
+    desktop: usr/share/applications/rinconjr-avalonia-xaml-playground.desktop
+    environment:
+      # Force Avalonia/Skia to use the bundled fonts and avoid host-path drift.
+      FONTCONFIG_PATH: ${SNAP}/etc/fonts
+      FONTCONFIG_FILE: ${SNAP}/etc/fonts/fonts.conf
     plugs:
       - desktop
       - desktop-legacy
@@ -32,42 +43,69 @@ apps:
       - x11
       - opengl
       - network
-      - network-bind
       - home
 
 parts:
   xaml-playground:
-    # The .NET plugin (v2) handles restore + build + publish automatically.
-    # Docs: https://documentation.ubuntu.com/snapcraft/9.0/common/craft-parts/reference/plugins/dotnet_v2_plugin/
     plugin: dotnet
     source: https://github.com/AvaloniaUI/XamlPlayground.git
     source-type: git
-    dotnet-version: "10.0"
-    dotnet-configuration: "Release"
-    dotnet-project: src/XamlPlayground.NetCore/XamlPlayground.NetCore.csproj
-    # Bundles the .NET runtime in the output and auto-selects the RID from
-    # $CRAFT_BUILD_FOR (amd64 -> linux-x64, arm64 -> linux-arm64).
-    dotnet-self-contained: true
-    dotnet-verbosity: "minimal"
+    source-depth: 1
 
-    # IMPORTANT: Stage dependencies for the application to run.
-    # Need to add what the runtime actually reports as missing:
-    #   1. run the app  ->  read the first "cannot open libXXX.so" error
-    #     1.a snapcraft pack
-    #     1.b sudo snap install ./name.snap --dangerous
-    #     1.c snap run name
-    #   2. apt-file search libXXX.so  ->  find the package that provides it
-    #   3. add it here, rebuild, run again, repeat
+    # Pull the version from the latest git tag, falling back to the commit hash.
+    override-pull: |
+      craftctl default
+      version=$(git -C "${CRAFT_PART_SRC}" describe --tags --always 2>/dev/null || echo "0.0+git")
+      craftctl set version="${version}"
+
+    dotnet-version: "10.0"
+    dotnet-configuration: Release
+    dotnet-project: src/XamlPlayground.NetCore/XamlPlayground.NetCore.csproj
+    dotnet-self-contained: true
+    dotnet-verbosity: minimal
+
+    build-packages:
+      - git
+
+    # Runtime libraries required by a self-contained .NET / Avalonia / Skia app.
+    # If the app still fails with "cannot open libXXX.so", add the missing
+    # package here and rebuild.
     stage-packages:
+      # core26 is based on Ubuntu 26.04, which uses the 64-bit time_t (t64)
+      # transition packages. Do not use "pkg-a | pkg-b" syntax here; snapcraft
+      # does not support alternatives in stage-packages.
       - libicu78
       - zlib1g
       - libfontconfig1
+      - libfreetype6
+      - libharfbuzz0b
+      - libpng16-16t64
+      - libjpeg8
+      - libgif7
       - libx11-6
+      - libxcb1
+      - libxau6
+      - libxdmcp6
       - libice6
       - libsm6
+      - libssl3t64
+      - libcurl4t64
+      - libgssapi-krb5-2
+      - libkrb5-3
+      - libk5crypto3
+      - libcom-err2
 
-# Silence benign library-linter warnings:
-# Docs: https://documentation.ubuntu.com/snapcraft/stable/how-to/debugging/use-the-library-linter
+    # Install the local .desktop entry into the standard location so the
+    # `desktop:` key in apps resolves correctly. The .desktop file lives in this
+    # repository, not in the upstream source part.
+    override-prime: |
+      craftctl default
+      install -D -m 0644 \
+        "${CRAFT_PROJECT_DIR}/snap/gui/rinconjr-avalonia-xaml-playground.desktop" \
+        "${CRAFT_PRIME}/usr/share/applications/rinconjr-avalonia-xaml-playground.desktop"
+
+# Silence benign library-linter warnings for libraries that are intentionally
+# bundled or pulled in as transitive dependencies.
 lint:
   ignore:
     - library:
@@ -79,3 +117,17 @@ lint:
         - usr/lib/**/libXau*
         - usr/lib/**/libXdmcp*
         - usr/lib/**/libicu*
+        - usr/lib/**/libcurl*
+        - usr/lib/**/libgif*
+        - usr/lib/**/libgraphite2*
+        - usr/lib/**/libgssapi_krb5*
+        - usr/lib/**/libharfbuzz*
+        - usr/lib/**/libjpeg*
+        - usr/lib/**/liblber*
+        - usr/lib/**/libldap*
+        - usr/lib/**/libnghttp2*
+        - usr/lib/**/libpsl*
+        - usr/lib/**/librtmp*
+        - usr/lib/**/libsasl2*
+        - usr/lib/**/libssh2*
+        - usr/lib/**/libssl.so*

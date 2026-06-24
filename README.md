@@ -59,6 +59,9 @@ Before you start, make sure you have the following installed:
 .
 ├── README.md                                       # This file
 ├── .gitignore
+├── scripts/
+│   ├── build.sh                                    # Helper: build the snap
+│   └── install-local.sh                            # Helper: install the local snap
 └── snap/
     ├── snapcraft.yaml                              # The snap recipe
     └── gui/
@@ -90,8 +93,8 @@ rinconjr-avalonia-xaml-playground_0.1_amd64.snap
 
 ## Installing the snap
 
-The snap now uses `confinement: strict`, so install it with just the
-`--dangerous` flag (required for locally built, unsigned snaps):
+The snap uses `confinement: strict`. Install a locally built, unsigned snap with
+`--dangerous`:
 
 ```sh
 sudo snap install ./rinconjr-avalonia-xaml-playground_0.1_amd64.snap --dangerous
@@ -163,7 +166,7 @@ With `dotnet-self-contained: true`, the plugin picks the .NET Runtime Identifier
   - `desktop`, `desktop-legacy`
   - `wayland`, `x11`
   - `opengl`
-  - `network`, `network-bind`
+  - `network`
   - `home`
 
 > **Why declare these plugs manually instead of using the `gnome` extension?**
@@ -197,6 +200,28 @@ copies are **not** visible at runtime. The reliable method to discover them is:
    ```
 
 3. **Add that package** to `stage-packages`, rebuild, run again, and repeat.
+
+## Useful commands
+
+```sh
+# Clean the build environment
+snapcraft clean
+
+# Build with verbose output
+snapcraft pack --verbose
+
+# Build for a specific architecture
+snapcraft pack --build-for arm64
+
+# Inspect the built snap contents
+unsquashfs -l ./rinconjr-avalonia-xaml-playground_*.snap | less
+
+# Check interfaces and connections
+snap connections rinconjr-avalonia-xaml-playground
+
+# View the snap's logs
+journalctl -f | grep rinconjr-avalonia-xaml-playground
+```
 
 > **IMPORTANT:** running `ldd` on the host can *lie*, since it resolves libraries using the
 > host's paths, so it may report "all found" even when a library is missing

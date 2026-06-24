@@ -24,3 +24,5 @@ obj/
 *.swp
 .DS_Store
 Thumbs.db
+
+# --- Scripts (keep source, ignore nothing) ---
