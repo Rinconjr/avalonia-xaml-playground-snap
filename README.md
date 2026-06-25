@@ -27,6 +27,7 @@ This repo is primarily a **teaching/learning sandbox**. The objectives are to:
 - Learn the structure of a `snapcraft.yaml` file (`parts`, `apps`, `plugs`).
 - Build a .NET / Avalonia application inside a snap with the `dotnet` plugin.
 - Understand the difference between plugins, extensions, and `stage-packages`.
+- Use the `gnome` extension on `core24` to wire up desktop interfaces.
 - Discover missing runtime libraries methodically (`apt-file`, `ldd`).
 - Move from `devmode` to `strict` confinement.
 - Add desktop integration (`.desktop` entry + icon).
@@ -124,11 +125,18 @@ Or find **Avalonia XAML Playground** in your desktop application menu (the
 
 ## How the build works
 
-The recipe uses the **.NET plugin (v2)** (`plugin: dotnet`), which runs
-`dotnet restore` -> `dotnet build` -> `dotnet publish` automatically. Setting
-`dotnet-version: "10.0"` makes the plugin fetch the official Canonical **.NET 10
-SDK content snap** (`dotnet-sdk-100`) during the build, so there is no need to
-download the SDK manually (this was my first approach before I found out about the plugin).
+The recipe is built on `base: core24` and uses two main helpers:
+
+1. The **.NET plugin (v2)** (`plugin: dotnet`), which runs
+   `dotnet restore` -> `dotnet build` -> `dotnet publish` automatically. Setting
+   `dotnet-version: "10.0"` makes the plugin fetch the official Canonical **.NET 10
+   SDK content snap** (`dotnet-sdk-100`) during the build, so there is no need to
+   download the SDK manually.
+
+2. The **`gnome` extension** (`extensions: [gnome]`) in the app entry. It wires up
+   the desktop interfaces (`desktop`, `desktop-legacy`, `wayland`, `x11`,
+   `opengl`), pulls in the GNOME platform content snap for fonts and themes, and
+   adds the standard desktop launch wrapper.
 
 The relevant part keys are:
 
@@ -150,37 +158,39 @@ With `dotnet-self-contained: true`, the plugin picks the .NET Runtime Identifier
 
 > Docs: [.NET plugin (v2)](https://documentation.ubuntu.com/snapcraft/9.0/common/craft-parts/reference/plugins/dotnet_v2_plugin/).
 
-> **Earlier approach (manual):** before switching to the plugin, this recipe used
-> `plugin: nil` with an `override-build` that ran `dotnet-install.sh` and
-> `dotnet publish` by hand, mapping the architecture to a RID with a `case`
+> **Earlier approach:** the first iteration of this recipe used `base: core26` and
+> declared the desktop plugs (`desktop`, `wayland`, `x11`, `opengl`, etc.) by hand
+> because the `gnome` extension did not support `core26`. The current recipe uses
+> `core24` so the `gnome` extension can handle the desktop plumbing automatically.
+>
+> **Earlier approach (manual build):** before switching to the `dotnet` plugin, this
+> recipe used `plugin: nil` with an `override-build` that ran `dotnet-install.sh`
+> and `dotnet publish` by hand, mapping the architecture to a RID with a `case`
 > statement. The plugin replaces all of that boilerplate.
 
 ## Confinement and status
 
+- `base: core24` - built on the Ubuntu 24.04 base snap.
 - `grade: devel` - not yet marked for release to `candidate`/`stable`.
 - `confinement: strict` - enforced confinement. The app can only access what its
-  declared [interfaces](https://snapcraft.io/docs/supported-interfaces) allow:
+  declared [interfaces](https://snapcraft.io/docs/supported-interfaces) allow.
+  The app entry uses the `gnome` extension, which injects:
   - `desktop`, `desktop-legacy`
   - `wayland`, `x11`
   - `opengl`
+  - `gsettings`
+  - GNOME platform content snap (fonts, themes)
+  - standard desktop launch wrapper
+
+  Only the non-desktop plugs are declared explicitly:
   - `network`, `network-bind`
   - `home`
 
-> **Why declare these plugs manually instead of using the `gnome` extension?**
-> The `gnome` extension would normally wire up the desktop interfaces and add a
-> common GNOME platform (fonts, themes, environment) automatically. However, per
-> the official docs the extension is *"compatible with the **core22 and core24**
-> bases"* only, it does **not** support `core26`. Trying to use it on `core26`
-> fails with:
->
-> ```text
-> Extension 'gnome' does not support base: 'core26'
-> ```
->
-> So on `core26` the `desktop`, `desktop-legacy`, `wayland`, `x11` and `opengl`
-> plugs are declared by hand instead. Note this only re-creates the *interface
-> access* the extension provided — the GNOME platform (fonts/themes) is not
-> bundled, so on a minimal host the app may fall back to default fonts.
+> **Why the `gnome` extension?** It bundles the GNOME platform (fonts, themes,
+> and common libraries) and wires up the desktop interfaces automatically. This
+> avoids having to declare `desktop`, `wayland`, `x11`, `opengl`, and related
+> `stage-packages` by hand. The extension is available for `core22` and `core24`;
+> this recipe uses `core24` to take advantage of it.
 > Source: [GNOME extension - Snapcraft docs](https://documentation.ubuntu.com/snapcraft/stable/reference/extensions/gnome-extension/).
 
 ## Finding the runtime library dependencies
@@ -235,16 +245,18 @@ apt-file search <lib>
 > binaries under `$SNAP/usr/bin`, `$SNAP/usr/lib`, etc. The command above scans
 > the whole snap (`"$SNAP"`), so it works regardless of layout.
 
-Following this loop, the libraries discovered for this app were:
+Following this loop, the libraries that still had to be staged for this app on
+`core24` were:
 
 | Missing `.so`        | Package          | Used by              |
 | -------------------- | ---------------- | -------------------- |
-| `libicu*.so`         | `libicu78`       | .NET globalization   |
+| `libicu*.so`         | `libicu74`       | .NET globalization   |
 | `libz.so.1`          | `zlib1g`         | SkiaSharp (compression) |
 | `libfontconfig.so.1` | `libfontconfig1` | SkiaSharp (renderer) |
-| `libX11.so.6`        | `libx11-6`       | Avalonia X11 backend |
-| `libICE.so.6`        | `libice6`        | Avalonia X11 ICELib  |
-| `libSM.so.6`         | `libsm6`         | Avalonia X11 SMlib   |
+
+The X11 stack (`libX11.so.6`, `libICE.so.6`, `libSM.so.6`, etc.) is provided by
+the GNOME platform content snap that the `gnome` extension pulls in, so those
+packages no longer need to be listed in `stage-packages`.
 
 > Note: these go in `stage-packages` only. The build-time .NET SDK (including its
 > own ICU dependency) is provided by the `dotnet` plugin via the
@@ -264,6 +276,9 @@ Following this loop, the libraries discovered for this app were:
 | `snap remove rinconjr-avalonia-xaml-playground` | Uninstall the snap |
 | `snap logs rinconjr-avalonia-xaml-playground` | View the snap's logs |
 | `apt-file search libXXX.so` | Find the package providing a missing library |
+| `snapcraft register --private rinconjr-avalonia-xaml-playground` | Register the snap name privately |
+| `snapcraft upload --release=edge rinconjr-avalonia-xaml-playground_0.1_amd64.snap` | Upload to the edge channel |
+| `sudo snap install rinconjr-avalonia-xaml-playground --edge` | Install from the Snap Store |
 
 ## Troubleshooting build environment (LXD)
 
@@ -277,6 +292,33 @@ sudo systemctl restart snap.lxd.daemon
 # If orphaned rsync processes remain, kill them, then delete the instance
 lxc --project snapcraft delete -f <instance-name>
 ```
+
+## Publishing to the Snap Store (private)
+
+To publish this snap privately for testing:
+
+1. Register the name:
+
+   ```sh
+   snapcraft register --private rinconjr-avalonia-xaml-playground
+   ```
+
+2. Upload a revision to the `edge` channel:
+
+   ```sh
+   snapcraft upload --release=edge rinconjr-avalonia-xaml-playground_0.1_amd64.snap
+   ```
+
+3. Install it from the store (private snaps require the installing user to be
+   logged in with an authorized Ubuntu One account):
+
+   ```sh
+   snap login your-email@example.com
+   sudo snap install rinconjr-avalonia-xaml-playground --edge
+   ```
+
+Private snaps are only visible to you and collaborators you invite in the store
+settings.
 
 ## Resources
 
