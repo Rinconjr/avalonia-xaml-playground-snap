@@ -1,5 +1,5 @@
 name: rinconjr-avalonia-xaml-playground # TODO: you probably want to 'snapcraft register <name>'
-base: core26 # the base snap is the execution environment for this snap
+base: core24 # changed from core26 so the gnome extension is available
 version: '0.1' # just for humans, typically '1.2+git' or '1.3.2'
 icon: snap/gui/icon.png # 256x256 PNG icon for the snap
 summary: A simple Avalonia XAML playground snap # 79 char long summary
@@ -8,10 +8,6 @@ description: |
 
   This snap is not endorsed by the Avalonia project or its maintainers. It is a personal project of the snap author to learn how to create snaps and to experiment with Avalonia.
 
-# Equivalent to
-# platforms:
-#  - build-on: [amd64]
-#  - build-for: [amd64]
 platforms:
   amd64:
   arm64:
@@ -21,50 +17,28 @@ confinement: strict # enforced confinement: the app can only do what its plugs a
 
 apps:
   rinconjr-avalonia-xaml-playground:
-    # The published self-contained executable. Its name matches the .csproj
-    # assembly name (XamlPlayground.NetCore). The dotnet plugin publishes the
-    # assets to the snap root.
     command: XamlPlayground.NetCore
+    extensions: [gnome]
     plugs:
-      - desktop
-      - desktop-legacy
-      - wayland
-      - x11
-      - opengl
       - network
       - network-bind
       - home
 
 parts:
   xaml-playground:
-    # The .NET plugin (v2) handles restore + build + publish automatically.
-    # Docs: https://documentation.ubuntu.com/snapcraft/9.0/common/craft-parts/reference/plugins/dotnet_v2_plugin/
     plugin: dotnet
     source: https://github.com/AvaloniaUI/XamlPlayground.git
     source-type: git
     dotnet-version: "10.0"
     dotnet-configuration: "Release"
     dotnet-project: src/XamlPlayground.NetCore/XamlPlayground.NetCore.csproj
-    # Bundles the .NET runtime in the output and auto-selects the RID from
-    # $CRAFT_BUILD_FOR (amd64 -> linux-x64, arm64 -> linux-arm64).
     dotnet-self-contained: true
     dotnet-verbosity: "minimal"
 
-    # IMPORTANT: Stage dependencies for the application to run.
-    # Need to add what the runtime actually reports as missing:
-    #   1. run the app  ->  read the first "cannot open libXXX.so" error
-    #     1.a snapcraft pack
-    #     1.b sudo snap install ./name.snap --dangerous
-    #     1.c snap run name
-    #   2. apt-file search libXXX.so  ->  find the package that provides it
-    #   3. add it here, rebuild, run again, repeat
     stage-packages:
-      - libicu78
+      - libicu74
       - zlib1g
       - libfontconfig1
-      - libx11-6
-      - libice6
-      - libsm6
 
 # Silence benign library-linter warnings:
 # Docs: https://documentation.ubuntu.com/snapcraft/stable/how-to/debugging/use-the-library-linter
@@ -72,10 +46,4 @@ lint:
   ignore:
     - library:
         - libcoreclrtraceptprovider.so
-        - usr/lib/**/libICE*
-        - usr/lib/**/libSM*
-        - usr/lib/**/libX11*
-        - usr/lib/**/libxcb*
-        - usr/lib/**/libXau*
-        - usr/lib/**/libXdmcp*
         - usr/lib/**/libicu*
