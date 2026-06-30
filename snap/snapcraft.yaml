@@ -19,12 +19,11 @@ confinement: strict
 apps:
   rinconjr-avalonia-xaml-playground:
     command: XamlPlayground.NetCore
-    extensions: [gnome]
+    extensions: [gnome, dotnet10]
     plugs:
       - network
       - network-bind
       - home
-
 parts:
   xaml-playground:
     plugin: dotnet
@@ -33,11 +32,10 @@ parts:
     dotnet-version: "10.0"
     dotnet-configuration: "Release"
     dotnet-project: src/XamlPlayground.NetCore/XamlPlayground.NetCore.csproj
-    dotnet-self-contained: true
+    dotnet-self-contained: false
     dotnet-verbosity: "minimal"
 
     stage-packages:
-      - libicu74
       - zlib1g
       - libfontconfig1
 
